@@ -148,11 +148,20 @@ class ProfileView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request):
-        """Delete user account"""
+        """Delete user account and all associated data"""
         user = request.user
-        user.is_active = False
-        user.save()
-        return Response({'message': 'Account deactivated successfully'}, status=status.HTTP_200_OK)
+
+        # Delete auth token
+        try:
+            user.auth_token.delete()
+        except:
+            pass
+
+        # Django will cascade delete all related data (matches, bookings, ratings, etc.)
+        # due to foreign key relationships
+        user.delete()
+
+        return Response({'message': 'Account deleted successfully'}, status=status.HTTP_200_OK)
 
 
 class PublicProfileView(APIView):
@@ -519,7 +528,7 @@ class BookingDetailView(APIView):
 
 class MatchListView(APIView):
     """List and create matches"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Allow public access to view matches
 
     def get(self, request):
         """Get matches with filters"""
@@ -531,9 +540,13 @@ class MatchListView(APIView):
         club_id = request.query_params.get('club_id', '')
         skill_level = request.query_params.get('skill_level', '')
         my_matches = request.query_params.get('my_matches', '')
+        search = request.query_params.get('search', '')  # Add search parameter
 
-        # Get blocked user IDs
-        blocked_user_ids = BlockedUser.get_blocked_user_ids(request.user)
+        # Get blocked user IDs (only if authenticated)
+        if request.user.is_authenticated:
+            blocked_user_ids = BlockedUser.get_blocked_user_ids(request.user)
+        else:
+            blocked_user_ids = []
 
         # Base queryset - exclude blocked users
         matches = Match.objects.exclude(organizer_id__in=blocked_user_ids)
@@ -569,7 +582,16 @@ class MatchListView(APIView):
             level = int(skill_level)
             matches = matches.filter(min_skill_level__lte=level, max_skill_level__gte=level)
 
-        if my_matches == 'true':
+        # Add search functionality (search by club name or location)
+        if search:
+            matches = matches.filter(
+                Q(title__icontains=search) |
+                Q(club__name__icontains=search) |
+                Q(club__city__icontains=search) |
+                Q(club__address__icontains=search)
+            )
+
+        if my_matches == 'true' and request.user.is_authenticated:
             # Get matches where user is organizer or participant
             participant_matches = MatchParticipant.objects.filter(
                 user=request.user,
@@ -582,6 +604,9 @@ class MatchListView(APIView):
         else:
             # For available matches (not my matches), only show public matches
             matches = matches.filter(is_public=True)
+            # For non-authenticated users, only show open matches
+            if not request.user.is_authenticated:
+                matches = matches.filter(status='open')
 
         # Update match statuses
         for match in matches:
@@ -599,7 +624,10 @@ class MatchListView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
-        """Create a new match"""
+        """Create a new match - Requires authentication"""
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required to create matches'}, status=status.HTTP_401_UNAUTHORIZED)
+
         serializer = MatchSerializer(data=request.data)
         if serializer.is_valid():
             match = serializer.save(organizer=request.user)
@@ -611,7 +639,7 @@ class MatchListView(APIView):
 
 class MatchDetailView(APIView):
     """Match detail API"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Allow public access to view match details
 
     def get(self, request, match_id):
         """Get match details"""
@@ -622,13 +650,18 @@ class MatchDetailView(APIView):
             serializer = MatchDetailSerializer(match, context={'request': request})
             data = serializer.data
 
-            # Add user-specific info
-            data['is_organizer'] = match.organizer == request.user
-            data['is_participant'] = MatchParticipant.objects.filter(
-                match=match,
-                user=request.user,
-                status='confirmed'
-            ).exists()
+            # Add user-specific info only if authenticated
+            if request.user.is_authenticated:
+                data['is_organizer'] = match.organizer == request.user
+                data['is_participant'] = MatchParticipant.objects.filter(
+                    match=match,
+                    user=request.user,
+                    status='confirmed'
+                ).exists()
+            else:
+                data['is_organizer'] = False
+                data['is_participant'] = False
+                data['requires_login'] = True
 
             return Response(data, status=status.HTTP_200_OK)
         except Match.DoesNotExist:
