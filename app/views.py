@@ -138,7 +138,23 @@ class ProfileView(APIView):
     def put(self, request):
         """Update current user's profile"""
         profile = request.user.profile
-        serializer = ProfileUpdateSerializer(profile, data=request.data, partial=True)
+        data = request.data.copy()
+
+        # Handle avatar_url (e.g. DiceBear URL) sent as a text field
+        avatar_url = data.pop('avatar_url', None)
+        if isinstance(avatar_url, list):
+            avatar_url = avatar_url[0] if avatar_url else None
+        if avatar_url:
+            data['external_avatar_url'] = avatar_url
+            # Clear uploaded avatar when using external URL
+            if profile.avatar:
+                profile.avatar.delete(save=False)
+
+        # Clear external URL when uploading a file avatar
+        if 'avatar' in request.FILES:
+            data['external_avatar_url'] = ''
+
+        serializer = ProfileUpdateSerializer(profile, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response({

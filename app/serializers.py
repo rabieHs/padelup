@@ -58,6 +58,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.avatar.url)
             return obj.avatar.url
+        if obj.external_avatar_url:
+            return obj.external_avatar_url
         return None
 
     def get_tier_name(self, obj):
@@ -737,7 +739,7 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = [
-            'phone_number', 'full_name', 'avatar', 'bio', 'location',
+            'phone_number', 'full_name', 'avatar', 'external_avatar_url', 'bio', 'location',
             'skill_level', 'evaluation_type', 'user_first_name', 'user_last_name', 'user_email'
         ]
 

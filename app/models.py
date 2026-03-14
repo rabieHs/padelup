@@ -23,6 +23,7 @@ class Profile(models.Model):
     full_name = models.CharField(max_length=255, blank=True)
     phone_number = models.CharField(max_length=15, blank=True)
     avatar = models.ImageField(upload_to=avatar_upload_path, blank=True, null=True)
+    external_avatar_url = models.URLField(max_length=500, blank=True, default='')
     bio = models.TextField(max_length=500, blank=True)
     location = models.CharField(max_length=255, blank=True)
     skill_level = models.IntegerField(
