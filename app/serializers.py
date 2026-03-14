@@ -9,6 +9,17 @@ from .models import (
 )
 
 
+def get_user_avatar_url(profile, request=None):
+    """Helper to get avatar URL, preferring external_avatar_url over local avatar."""
+    if profile.external_avatar_url:
+        return profile.external_avatar_url
+    if profile.avatar:
+        if request:
+            return request.build_absolute_uri(profile.avatar.url)
+        return profile.avatar.url
+    return None
+
+
 class UserSerializer(serializers.ModelSerializer):
     """Basic user serializer"""
     password = serializers.CharField(write_only=True, required=False, validators=[validate_password])
@@ -189,34 +200,23 @@ class MatchParticipantSerializer(serializers.ModelSerializer):
 
     def get_user_info(self, obj):
         if obj.user:
+            request = self.context.get('request')
+            avatar_url = get_user_avatar_url(obj.user.profile, request) if hasattr(obj.user, 'profile') else None
             return {
                 'id': obj.user.id,
                 'username': obj.user.username,
                 'skill_level': obj.user.profile.skill_level if hasattr(obj.user, 'profile') else None,
                 'evaluation_type': obj.user.profile.evaluation_type if hasattr(obj.user, 'profile') else 'new',
-                'avatar': obj.user.profile.avatar.url if hasattr(obj.user, 'profile') and obj.user.profile.avatar else None
+                'avatar': avatar_url
             }
         return None
 
     def get_userAvatar(self, obj):
         """Get user avatar URL for Flutter"""
-        avatar_url = None
-        if obj.user and hasattr(obj.user, 'profile') and obj.user.profile.avatar:
-            # Build absolute URL like ProfileSerializer does
+        if obj.user and hasattr(obj.user, 'profile'):
             request = self.context.get('request')
-            if request:
-                avatar_url = request.build_absolute_uri(obj.user.profile.avatar.url)
-            else:
-                avatar_url = obj.user.profile.avatar.url
-
-        print(f"=== PARTICIPANT AVATAR DEBUG ===")
-        print(f"User: {obj.user.username if obj.user else 'None'}")
-        print(f"Has profile: {hasattr(obj.user, 'profile') if obj.user else False}")
-        print(f"Has avatar: {obj.user.profile.avatar if (obj.user and hasattr(obj.user, 'profile')) else False}")
-        print(f"Avatar URL: {avatar_url}")
-        print(f"================================")
-
-        return avatar_url
+            return get_user_avatar_url(obj.user.profile, request)
+        return None
 
     def get_userSkillLevel(self, obj):
         """Get user skill level for Flutter"""
@@ -268,20 +268,8 @@ class MatchSerializer(serializers.ModelSerializer):
         ]
 
     def get_organizer_info(self, obj):
-        # Build absolute avatar URL like we do for participants
-        avatar_url = None
-        if hasattr(obj.organizer, 'profile') and obj.organizer.profile.avatar:
-            request = self.context.get('request')
-            if request:
-                avatar_url = request.build_absolute_uri(obj.organizer.profile.avatar.url)
-            else:
-                avatar_url = obj.organizer.profile.avatar.url
-
-        print(f"=== ORGANIZER AVATAR DEBUG ===")
-        print(f"Organizer: {obj.organizer.username}")
-        print(f"Avatar URL: {avatar_url}")
-        print(f"==============================")
-
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.organizer.profile, request) if hasattr(obj.organizer, 'profile') else None
         return {
             'id': obj.organizer.id,
             'username': obj.organizer.username,
@@ -340,10 +328,12 @@ class MatchMessageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sender_name', 'sender_info', 'created_at']
 
     def get_sender_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.sender.profile, request) if hasattr(obj.sender, 'profile') else None
         return {
             'id': obj.sender.id,
             'username': obj.sender.username,
-            'avatar': obj.sender.profile.avatar.url if hasattr(obj.sender, 'profile') and obj.sender.profile.avatar else None
+            'avatar': avatar_url
         }
 
 
@@ -431,19 +421,20 @@ class PostReplySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'author_name', 'author_info', 'author_avatar', 'child_replies', 'like_count', 'is_liked', 'created_at', 'updated_at']
 
     def get_author_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.author.profile, request) if hasattr(obj.author, 'profile') else None
         return {
             'id': obj.author.id,
             'username': obj.author.username,
-            'avatar': obj.author.profile.avatar.url if hasattr(obj.author, 'profile') and obj.author.profile.avatar else None
+            'avatar': avatar_url
         }
 
     def get_author_avatar(self, obj):
         try:
-            if obj.author.profile.avatar:
-                return obj.author.profile.avatar.url
+            request = self.context.get('request')
+            return get_user_avatar_url(obj.author.profile, request)
         except:
-            pass
-        return None
+            return None
 
     def get_child_replies(self, obj):
         if obj.parent_reply is None:
@@ -480,10 +471,12 @@ class CommunityPostSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'author_name', 'author_info', 'category_display', 'group_name', 'like_count', 'reply_count', 'is_liked', 'created_at', 'updated_at']
 
     def get_author_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.author.profile, request) if hasattr(obj.author, 'profile') else None
         return {
             'id': obj.author.id,
             'username': obj.author.username,
-            'avatar': obj.author.profile.avatar.url if hasattr(obj.author, 'profile') and obj.author.profile.avatar else None
+            'avatar': avatar_url
         }
 
     def get_is_liked(self, obj):
@@ -538,26 +531,31 @@ class FriendRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sender_name', 'sender_info', 'sender_profile', 'receiver_name', 'receiver_info', 'receiver_profile', 'created_at', 'updated_at']
 
     def get_sender_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.sender.profile, request) if hasattr(obj.sender, 'profile') else None
         return {
             'id': obj.sender.id,
             'username': obj.sender.username,
-            'avatar': obj.sender.profile.avatar.url if hasattr(obj.sender, 'profile') and obj.sender.profile.avatar else None
+            'avatar': avatar_url
         }
 
     def get_receiver_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.receiver.profile, request) if hasattr(obj.receiver, 'profile') else None
         return {
             'id': obj.receiver.id,
             'username': obj.receiver.username,
-            'avatar': obj.receiver.profile.avatar.url if hasattr(obj.receiver, 'profile') and obj.receiver.profile.avatar else None
+            'avatar': avatar_url
         }
 
     def get_sender_profile(self, obj):
         try:
             profile = obj.sender.profile
+            request = self.context.get('request')
             return {
                 'skill_level': profile.skill_level,
                 'evaluation_type': profile.evaluation_type,
-                'avatar': profile.avatar.url if profile.avatar else None
+                'avatar': get_user_avatar_url(profile, request)
             }
         except:
             return None
@@ -565,10 +563,11 @@ class FriendRequestSerializer(serializers.ModelSerializer):
     def get_receiver_profile(self, obj):
         try:
             profile = obj.receiver.profile
+            request = self.context.get('request')
             return {
                 'skill_level': profile.skill_level,
                 'evaluation_type': profile.evaluation_type,
-                'avatar': profile.avatar.url if profile.avatar else None
+                'avatar': get_user_avatar_url(profile, request)
             }
         except:
             return None
@@ -587,13 +586,14 @@ class FriendshipSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.user:
             friend = obj.user2 if obj.user1 == request.user else obj.user1
+            avatar_url = get_user_avatar_url(friend.profile, request) if hasattr(friend, 'profile') else None
             return {
                 'id': friend.id,
                 'username': friend.username,
                 'email': friend.email,
                 'skill_level': friend.profile.skill_level if hasattr(friend, 'profile') else None,
                 'evaluation_type': friend.profile.evaluation_type if hasattr(friend, 'profile') else 'new',
-                'avatar': friend.profile.avatar.url if hasattr(friend, 'profile') and friend.profile.avatar else None
+                'avatar': avatar_url
             }
         return None
 
@@ -614,17 +614,21 @@ class PrivateMessageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sender_name', 'sender_info', 'receiver_name', 'receiver_info', 'created_at']
 
     def get_sender_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.sender.profile, request) if hasattr(obj.sender, 'profile') else None
         return {
             'id': obj.sender.id,
             'username': obj.sender.username,
-            'avatar': obj.sender.profile.avatar.url if hasattr(obj.sender, 'profile') and obj.sender.profile.avatar else None
+            'avatar': avatar_url
         }
 
     def get_receiver_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.receiver.profile, request) if hasattr(obj.receiver, 'profile') else None
         return {
             'id': obj.receiver.id,
             'username': obj.receiver.username,
-            'avatar': obj.receiver.profile.avatar.url if hasattr(obj.receiver, 'profile') and obj.receiver.profile.avatar else None
+            'avatar': avatar_url
         }
 
 
@@ -648,10 +652,12 @@ class BlockedUserSerializer(serializers.ModelSerializer):
         }
 
     def get_blocked_info(self, obj):
+        request = self.context.get('request')
+        avatar_url = get_user_avatar_url(obj.blocked.profile, request) if hasattr(obj.blocked, 'profile') else None
         return {
             'id': obj.blocked.id,
             'username': obj.blocked.username,
-            'avatar': obj.blocked.profile.avatar.url if hasattr(obj.blocked, 'profile') and obj.blocked.profile.avatar else None
+            'avatar': avatar_url
         }
 
 
