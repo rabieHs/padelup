@@ -77,6 +77,66 @@ def send_match_join_confirmation(user, match):
     return _send_email(user.email, subject, html_content)
 
 
+def send_welcome_email(user):
+    """Send welcome email after registration via SendGrid"""
+    if not settings.SENDGRID_API_KEY:
+        print('SendGrid API key not configured, skipping welcome email')
+        return False
+
+    subject = 'Bienvenue sur PadelUp !'
+    html_content = f"""
+    <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 24px;">
+        <div style="background: #094A73; color: white; padding: 24px; border-radius: 16px 16px 0 0; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px;">PadelUp</h1>
+            <p style="margin: 8px 0 0; opacity: 0.9;">Bienvenue dans la communauté !</p>
+        </div>
+        <div style="background: white; padding: 24px; border-radius: 0 0 16px 16px;">
+            <p>Bonjour <strong>{user.first_name or user.username}</strong>,</p>
+            <p>Votre compte PadelUp a été créé avec succès ! 🎾</p>
+            <div style="background: #f0fdf4; border: 1px solid #10B981; border-radius: 12px; padding: 16px; margin: 16px 0;">
+                <h3 style="margin: 0 0 12px; color: #094A73;">Pour commencer</h3>
+                <p style="margin: 4px 0;">✅ Complétez votre profil avec votre niveau</p>
+                <p style="margin: 4px 0;">✅ Découvrez les clubs près de chez vous</p>
+                <p style="margin: 4px 0;">✅ Rejoignez ou créez un match</p>
+                <p style="margin: 4px 0;">✅ Ajoutez des amis et jouez ensemble</p>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">À bientôt sur les terrains !</p>
+            <p style="color: #6b7280; font-size: 14px;">L'équipe PadelUp</p>
+        </div>
+    </div>
+    """
+
+    return _send_email(user.email, subject, html_content)
+
+
+def send_password_reset_email(user, code):
+    """Send password reset code via email"""
+    if not settings.SENDGRID_API_KEY:
+        print('SendGrid API key not configured, skipping password reset email')
+        return False
+
+    subject = 'PadelUp - Code de réinitialisation'
+    html_content = f"""
+    <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 24px;">
+        <div style="background: #094A73; color: white; padding: 24px; border-radius: 16px 16px 0 0; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px;">PadelUp</h1>
+            <p style="margin: 8px 0 0; opacity: 0.9;">Réinitialisation du mot de passe</p>
+        </div>
+        <div style="background: white; padding: 24px; border-radius: 0 0 16px 16px;">
+            <p>Bonjour <strong>{user.first_name or user.username}</strong>,</p>
+            <p>Vous avez demandé la réinitialisation de votre mot de passe. Voici votre code de vérification :</p>
+            <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 12px; padding: 24px; margin: 16px 0; text-align: center;">
+                <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #094A73; margin: 0;">{code}</p>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">Ce code est valable pendant <strong>15 minutes</strong>.</p>
+            <p style="color: #6b7280; font-size: 14px;">Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
+        </div>
+    </div>
+    """
+
+    return _send_email(user.email, subject, html_content)
+
+
 def _send_email(to_email, subject, html_content):
     """Send an email using SendGrid API"""
     try:

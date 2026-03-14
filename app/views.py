@@ -17,12 +17,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.pagination import PageNumberPagination
 
+import random
+
 from .models import (
     Profile, PlayerStats, Club, Court, Booking, Match, MatchParticipant,
     MatchMessage, Rating, CourtRating, Notification, CommunityPost,
     PostReply, CommunityGroup, FriendRequest, Friendship, PrivateMessage,
-    BlockedUser
+    BlockedUser, PasswordResetCode
 )
+from .email_service import send_welcome_email, send_password_reset_email
 from .serializers import (
     UserSerializer, ProfileSerializer, ProfileSetupSerializer, ProfileUpdateSerializer,
     PlayerStatsSerializer, ClubSerializer, CourtSerializer, BookingSerializer,
@@ -49,6 +52,11 @@ class RegisterView(APIView):
             user = serializer.save()
             # Create auth token
             token, created = Token.objects.get_or_create(user=user)
+            # Send welcome email (non-blocking)
+            try:
+                send_welcome_email(user)
+            except Exception:
+                pass
             # Return user data with token
             return Response({
                 'user': UserSerializer(user).data,
@@ -105,6 +113,85 @@ class LogoutView(APIView):
             pass
         logout(request)
         return Response({'message': 'Logout successful'}, status=status.HTTP_200_OK)
+
+
+class PasswordResetRequestView(APIView):
+    """Request a password reset code"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            return Response({'detail': 'Email requis'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Return success even if email doesn't exist (security: don't reveal accounts)
+            return Response({'message': 'Si un compte existe avec cet email, un code a été envoyé.'})
+
+        # Invalidate previous codes
+        PasswordResetCode.objects.filter(user=user, is_used=False).update(is_used=True)
+
+        # Generate 6-digit code
+        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        PasswordResetCode.objects.create(user=user, code=code)
+
+        # Send email
+        try:
+            send_password_reset_email(user, code)
+        except Exception as e:
+            print(f'Failed to send password reset email: {e}')
+
+        return Response({'message': 'Si un compte existe avec cet email, un code a été envoyé.'})
+
+
+class PasswordResetConfirmView(APIView):
+    """Confirm password reset with code"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        code = request.data.get('code', '').strip()
+        new_password = request.data.get('new_password', '')
+
+        if not email or not code or not new_password:
+            return Response(
+                {'detail': 'Email, code et nouveau mot de passe requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(new_password) < 8:
+            return Response(
+                {'detail': 'Le mot de passe doit contenir au moins 8 caractères'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'detail': 'Code invalide ou expiré'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Find valid code
+        reset_code = PasswordResetCode.objects.filter(
+            user=user, code=code, is_used=False
+        ).order_by('-created_at').first()
+
+        if not reset_code or not reset_code.is_valid():
+            return Response({'detail': 'Code invalide ou expiré'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Reset password
+        user.set_password(new_password)
+        user.save()
+
+        # Mark code as used
+        reset_code.is_used = True
+        reset_code.save()
+
+        # Delete existing tokens so user must login fresh
+        Token.objects.filter(user=user).delete()
+
+        return Response({'message': 'Mot de passe réinitialisé avec succès'})
 
 
 class ProfileSetupView(APIView):

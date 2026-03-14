@@ -817,6 +817,27 @@ class SavedClub(models.Model):
 
 # Signal handlers to create Profile and PlayerStats automatically
 from django.db.models.signals import post_save
+class PasswordResetCode(models.Model):
+    """Stores password reset codes sent via email"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reset_codes')
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def is_valid(self):
+        """Check if code is still valid (15 minutes expiry)"""
+        from datetime import timedelta
+        if self.is_used:
+            return False
+        return timezone.now() - self.created_at < timedelta(minutes=15)
+
+    def __str__(self):
+        return f"Reset code for {self.user.username} - {'used' if self.is_used else 'active'}"
+
+
 from django.dispatch import receiver
 
 @receiver(post_save, sender=User)
