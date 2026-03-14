@@ -1,9 +1,14 @@
+import base64
+import requests as http_requests
+
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Avg, Count
 from django.utils import timezone
 from datetime import datetime, timedelta
+
+FREEIMAGE_API_KEY = '6d207e02198a847aa98d0a2a901485a5'
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -108,7 +113,34 @@ class ProfileSetupView(APIView):
 
     def post(self, request):
         profile = request.user.profile
-        serializer = ProfileSetupSerializer(profile, data=request.data, partial=True)
+        data = request.data.copy()
+
+        # Upload avatar to Freeimage.host if provided
+        if 'avatar' in request.FILES:
+            uploaded_file = request.FILES['avatar']
+            try:
+                file_content = uploaded_file.read()
+                b64_image = base64.b64encode(file_content).decode('utf-8')
+                resp = http_requests.post(
+                    'https://freeimage.host/api/1/upload',
+                    data={
+                        'key': FREEIMAGE_API_KEY,
+                        'action': 'upload',
+                        'source': b64_image,
+                        'format': 'json',
+                    },
+                    timeout=30,
+                )
+                if resp.status_code == 200:
+                    resp_data = resp.json()
+                    if resp_data.get('status_code') == 200:
+                        profile.external_avatar_url = resp_data['image']['url']
+                        profile.save(update_fields=['external_avatar_url'])
+            except Exception:
+                pass  # Non-critical, profile setup can proceed without avatar
+            data.pop('avatar', None)
+
+        serializer = ProfileSetupSerializer(profile, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response({
@@ -146,17 +178,45 @@ class ProfileView(APIView):
             avatar_url = avatar_url[0] if avatar_url else None
         if avatar_url:
             data['external_avatar_url'] = avatar_url
-            # Clear uploaded avatar when using external URL
-            try:
-                if profile.avatar:
-                    profile.avatar.delete(save=False)
-            except Exception:
-                profile.avatar = None
-                profile.save(update_fields=['avatar'])
 
-        # Clear external URL when uploading a file avatar
+        # Upload file avatar to Freeimage.host and store URL
         if 'avatar' in request.FILES:
-            data['external_avatar_url'] = ''
+            uploaded_file = request.FILES['avatar']
+            try:
+                file_content = uploaded_file.read()
+                b64_image = base64.b64encode(file_content).decode('utf-8')
+                resp = http_requests.post(
+                    'https://freeimage.host/api/1/upload',
+                    data={
+                        'key': FREEIMAGE_API_KEY,
+                        'action': 'upload',
+                        'source': b64_image,
+                        'format': 'json',
+                    },
+                    timeout=30,
+                )
+                if resp.status_code == 200:
+                    resp_data = resp.json()
+                    if resp_data.get('status_code') == 200:
+                        image_url = resp_data['image']['url']
+                        data['external_avatar_url'] = image_url
+                    else:
+                        return Response(
+                            {'detail': 'Image upload failed'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                else:
+                    return Response(
+                        {'detail': 'Image hosting service unavailable'},
+                        status=status.HTTP_502_BAD_GATEWAY
+                    )
+            except Exception as e:
+                return Response(
+                    {'detail': f'Image upload error: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            # Remove avatar from data so serializer doesn't try to save file
+            data.pop('avatar', None)
 
         serializer = ProfileUpdateSerializer(profile, data=data, partial=True)
         if serializer.is_valid():
