@@ -147,8 +147,12 @@ class ProfileView(APIView):
         if avatar_url:
             data['external_avatar_url'] = avatar_url
             # Clear uploaded avatar when using external URL
-            if profile.avatar:
-                profile.avatar.delete(save=False)
+            try:
+                if profile.avatar:
+                    profile.avatar.delete(save=False)
+            except Exception:
+                profile.avatar = None
+                profile.save(update_fields=['avatar'])
 
         # Clear external URL when uploading a file avatar
         if 'avatar' in request.FILES:
