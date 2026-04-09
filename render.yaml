@@ -9,7 +9,6 @@ services:
     name: padelup-api
     plan: free
     runtime: python
-    rootDir: backend
     buildCommand: "./build.sh"
     startCommand: "gunicorn backend.wsgi:application"
     envVars:
