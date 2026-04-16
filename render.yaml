@@ -9,7 +9,7 @@ services:
     name: padelup-api
     plan: free
     runtime: python
-    buildCommand: "./build.sh"
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --no-input"
     startCommand: "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT"
     envVars:
       - key: DATABASE_URL
