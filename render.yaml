@@ -9,8 +9,8 @@ services:
     name: padelup-api
     plan: free
     runtime: python
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --no-input"
-    startCommand: "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -c 'import os; from http.server import HTTPServer, BaseHTTPRequestHandler; print(\"STARTING\", flush=True); HTTPServer((\"0.0.0.0\", int(os.environ.get(\"PORT\", 8000))), BaseHTTPRequestHandler).serve_forever()'"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
