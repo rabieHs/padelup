@@ -10,7 +10,7 @@ services:
     plan: free
     runtime: python
     buildCommand: "./build.sh"
-    startCommand: "gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 --preload --log-level debug --access-logfile - --error-logfile -"
+    startCommand: "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
